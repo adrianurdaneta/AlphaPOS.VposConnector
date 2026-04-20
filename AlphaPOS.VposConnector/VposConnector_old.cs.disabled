@@ -1,0 +1,358 @@
+﻿using System;
+using System.Runtime.InteropServices;
+using System.Net;
+using System.IO;
+using System.Text;
+using System.Security.Cryptography.X509Certificates;
+
+namespace AlphaPOS.VposConnector
+{
+    [ComVisible(true)]
+    [ProgId("AlphaPOS.VposConnector")]
+    [Guid("D1A1DAF1-4C3E-4B49-A4F8-8F94B2D6EA1A")]
+    [ClassInterface(ClassInterfaceType.AutoDual)]
+    public class VposConnector
+    {
+        private string serverUrl = string.Empty;
+        private int timeoutMs = 120000; // 120s default for PIN pad interactions
+        private string apiKey = null;
+        private string apiKeyHeader = "X-Api-Key";
+        private string clientCertPath = null;
+        private string clientCertPassword = null;
+        private X509Certificate2 clientCertificate = null;
+        private string logPath;
+        private readonly object logLock = new object();
+
+        [DllImport("kernel32", CharSet = CharSet.Unicode)]
+        static extern int GetPrivateProfileString(string section, string key, string defaultValue, StringBuilder retVal, int size, string filePath);
+
+        public VposConnector()
+        {
+            try
+            {
+                logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AlphaPOS.VposConnector.log");
+            }
+            catch
+            {
+                logPath = "AlphaPOS.VposConnector.log";
+            }
+        }
+
+        public bool Init(string iniPath)
+        {
+            if (string.IsNullOrEmpty(iniPath)) return false;
+            try
+            {
+                var sb = new StringBuilder(1024);
+                int len = GetPrivateProfileString("General", "Merchant_Server", "", sb, sb.Capacity, iniPath);
+                if (len > 0)
+                {
+                    serverUrl = sb.ToString().Trim();
+                }
+
+                sb.Clear();
+                GetPrivateProfileString("General", "ApiKey", "", sb, sb.Capacity, iniPath);
+                if (sb.Length > 0) apiKey = sb.ToString().Trim();
+
+                sb.Clear();
+                GetPrivateProfileString("General", "ApiKeyHeader", "", sb, sb.Capacity, iniPath);
+                if (sb.Length > 0) apiKeyHeader = sb.ToString().Trim();
+
+                sb.Clear();
+                GetPrivateProfileString("General", "ClientCertPath", "", sb, sb.Capacity, iniPath);
+                if (sb.Length > 0) clientCertPath = sb.ToString().Trim();
+
+                sb.Clear();
+                GetPrivateProfileString("General", "ClientCertPassword", "", sb, sb.Capacity, iniPath);
+                if (sb.Length > 0) clientCertPassword = sb.ToString();
+
+                sb.Clear();
+                GetPrivateProfileString("General", "TimeoutMs", "", sb, sb.Capacity, iniPath);
+                if (sb.Length > 0)
+                {
+                    int t;
+                    if (int.TryParse(sb.ToString().Trim(), out t) && t > 0) timeoutMs = t;
+                }
+
+                if (!string.IsNullOrEmpty(clientCertPath))
+                {
+                    TryLoadClientCertificate();
+                }
+
+                Log("Init: serverUrl={0} apiKeySet={1} certPath={2} timeoutMs={3}", serverUrl, !string.IsNullOrEmpty(apiKey), string.IsNullOrEmpty(clientCertPath) ? "(none)" : clientCertPath, timeoutMs);
+
+                return !string.IsNullOrEmpty(serverUrl);
+            }
+            catch (Exception ex)
+            {
+                Log("Init error: {0}", ex.Message);
+                return false;
+            }
+        }
+
+        public void SetApiKey(string key)
+        {
+            apiKey = key;
+            Log("SetApiKey: {0}", apiKey != null ? "***" : "(null)");
+        }
+
+        public void SetClientCertificate(string path, string password)
+        {
+            clientCertPath = path;
+            clientCertPassword = password;
+            TryLoadClientCertificate();
+        }
+
+        public void SetApiKeyHeader(string headerName)
+        {
+            if (!string.IsNullOrEmpty(headerName)) apiKeyHeader = headerName;
+        }
+
+        public void SetLogPath(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            logPath = path;
+            Log("SetLogPath: {0}", logPath);
+        }
+
+        public void SetTimeout(int ms)
+        {
+            if (ms > 0) timeoutMs = ms;
+            Log("SetTimeout: {0}", timeoutMs);
+        }
+
+        private bool TryLoadClientCertificate()
+        {
+            try
+            {
+                if (File.Exists(clientCertPath))
+                {
+                    clientCertificate = new X509Certificate2(clientCertPath, clientCertPassword);
+                    Log("Client certificate loaded from {0}", clientCertPath);
+                    return true;
+                }
+                Log("Client certificate not found at {0}", clientCertPath);
+            }
+            catch (Exception ex)
+            {
+                Log("Load client cert error: {0}", ex.Message);
+            }
+            return false;
+        }
+
+        private void Log(string fmt, params object[] args)
+        {
+            try
+            {
+                lock (logLock)
+                {
+                    var line = DateTime.UtcNow.ToString("o") + " " + string.Format(fmt, args) + Environment.NewLine;
+                    File.AppendAllText(logPath, line);
+                }
+            }
+            catch { /* swallow logging errors */ }
+        }
+
+        private string SendRequest(string fullUrl, string method, string body, int requestTimeout, bool allowCertFallback)
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12 | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls;
+            bool triedApiKey = false;
+
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                triedApiKey = true;
+                try
+                {
+                    Log("SendRequest: Attempting with API key to {0}", fullUrl);
+                    var r = CreateRequest(fullUrl, method, requestTimeout, body);
+                    r.Headers[apiKeyHeader] = apiKey;
+                    var respText = ExecuteRequest(r);
+                    Log("SendRequest: API key attempt succeeded");
+                    return respText;
+                }
+                catch (WebException wex)
+                {
+                    var resp = wex.Response as HttpWebResponse;
+                    if (resp != null)
+                    {
+                        Log("SendRequest: API key attempt HTTP {0} {1}", (int)resp.StatusCode, resp.StatusDescription);
+                        if ((int)resp.StatusCode == 401 || (int)resp.StatusCode == 403)
+                        {
+                            // fallthrough to cert fallback
+                        }
+                        else
+                        {
+                            try { using (var sr = new StreamReader(resp.GetResponseStream())) return sr.ReadToEnd(); } catch { return "ERROR: " + wex.Message; }
+                        }
+                    }
+                    else
+                    {
+                        Log("SendRequest: API key attempt failed (no response): {0}", wex.Message);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("SendRequest: API key attempt exception: {0}", ex.Message);
+                }
+            }
+
+            if (clientCertificate != null && allowCertFallback)
+            {
+                try
+                {
+                    Log("SendRequest: Attempting with client certificate to {0}", fullUrl);
+                    var r2 = CreateRequest(fullUrl, method, requestTimeout, body);
+                    r2.ClientCertificates.Add(clientCertificate);
+                    var respText2 = ExecuteRequest(r2);
+                    Log("SendRequest: Client cert attempt succeeded");
+                    return respText2;
+                }
+                catch (WebException wex)
+                {
+                    var resp = wex.Response as HttpWebResponse;
+                    if (resp != null)
+                    {
+                        try { using (var sr = new StreamReader(resp.GetResponseStream())) return sr.ReadToEnd(); } catch { return "ERROR: HTTP " + (int)resp.StatusCode + " - " + resp.StatusDescription; }
+                    }
+                    Log("SendRequest: Client cert attempt failed: {0}", wex.Message);
+                    return "ERROR: " + wex.Message;
+                }
+                catch (Exception ex)
+                {
+                    Log("SendRequest: Client cert attempt exception: {0}", ex.Message);
+                    return "ERROR: " + ex.Message;
+                }
+            }
+
+            if (!triedApiKey)
+            {
+                try
+                {
+                    Log("SendRequest: Attempting without auth to {0}", fullUrl);
+                    var r3 = CreateRequest(fullUrl, method, requestTimeout, body);
+                    var respText3 = ExecuteRequest(r3);
+                    return respText3;
+                }
+                catch (WebException wex)
+                {
+                    var resp = wex.Response as HttpWebResponse;
+                    if (resp != null)
+                    {
+                        try { using (var sr = new StreamReader(resp.GetResponseStream())) return sr.ReadToEnd(); } catch { return "ERROR: HTTP " + (int)resp.StatusCode + " - " + resp.StatusDescription; }
+                    }
+                    Log("SendRequest: no-auth attempt failed: {0}", wex.Message);
+                    return "ERROR: " + wex.Message;
+                }
+                catch (Exception ex)
+                {
+                    Log("SendRequest: no-auth exception: {0}", ex.Message);
+                    return "ERROR: " + ex.Message;
+                }
+            }
+
+            return "ERROR: No viable auth method available";
+        }
+
+        private HttpWebRequest CreateRequest(string url, string method, int requestTimeout, string body)
+        {
+            var req = (HttpWebRequest)WebRequest.Create(url);
+            req.Method = method ?? "GET";
+            if (requestTimeout > 0) req.Timeout = requestTimeout;
+            else req.Timeout = timeoutMs;
+            req.ReadWriteTimeout = req.Timeout;
+            if (!string.IsNullOrEmpty(body))
+            {
+                var data = Encoding.UTF8.GetBytes(body);
+                req.ContentType = "application/json";
+                req.ContentLength = data.Length;
+                using (var s = req.GetRequestStream()) s.Write(data, 0, data.Length);
+            }
+            return req;
+        }
+
+        private string ExecuteRequest(HttpWebRequest req)
+        {
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var sr = new StreamReader(resp.GetResponseStream()))
+            {
+                return sr.ReadToEnd();
+            }
+        }
+
+        public string TestConnection()
+        {
+            if (string.IsNullOrEmpty(serverUrl)) return "NO_CONFIG";
+            try
+            {
+                Log("TestConnection -> {0}", serverUrl);
+                return SendRequest(serverUrl, "GET", null, 5000, true);
+            }
+            catch (Exception ex)
+            {
+                Log("TestConnection error: {0}", ex.Message);
+                return "ERROR: " + ex.Message;
+            }
+        }
+
+        public string StartTransaction(string jsonRequest)
+        {
+            if (string.IsNullOrEmpty(serverUrl)) return "NO_CONFIG";
+            try
+            {
+                Log("StartTransaction payload: {0}", jsonRequest);
+                return SendRequest(serverUrl, "POST", jsonRequest ?? "{}", timeoutMs, true);
+            }
+            catch (Exception ex)
+            {
+                Log("StartTransaction error: {0}", ex.Message);
+                return "ERROR: " + ex.Message;
+            }
+        }
+
+        public string PollStatus(string transactionId)
+        {
+            if (string.IsNullOrEmpty(serverUrl)) return "NO_CONFIG";
+            try
+            {
+                var url = serverUrl.TrimEnd('/') + "/status/" + Uri.EscapeDataString(transactionId ?? string.Empty);
+                return SendRequest(url, "GET", null, 5000, true);
+            }
+            catch (Exception ex)
+            {
+                Log("PollStatus error: {0}", ex.Message);
+                return "ERROR: " + ex.Message;
+            }
+        }
+
+        public string GetVoucher(string transactionId)
+        {
+            if (string.IsNullOrEmpty(serverUrl)) return "NO_CONFIG";
+            try
+            {
+                var url = serverUrl.TrimEnd('/') + "/voucher/" + Uri.EscapeDataString(transactionId ?? string.Empty);
+                return SendRequest(url, "GET", null, 5000, true);
+            }
+            catch (Exception ex)
+            {
+                Log("GetVoucher error: {0}", ex.Message);
+                return "ERROR: " + ex.Message;
+            }
+        }
+
+        public string CancelTransaction(string transactionId)
+        {
+            if (string.IsNullOrEmpty(serverUrl)) return "NO_CONFIG";
+            try
+            {
+                var url = serverUrl.TrimEnd('/') + "/cancel";
+                var payload = "{\"transactionId\":\"" + (transactionId ?? string.Empty) + "\"}";
+                return SendRequest(url, "POST", payload, 10000, true);
+            }
+            catch (Exception ex)
+            {
+                Log("CancelTransaction error: {0}", ex.Message);
+                return "ERROR: " + ex.Message;
+            }
+        }
+    }
+}

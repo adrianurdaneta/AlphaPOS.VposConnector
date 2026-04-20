@@ -1,0 +1,44 @@
+# Visual Studio and build artifacts
+.vs/
+*.user
+*.suo
+*.cache
+*.log
+*.obj
+*.exe
+*.dll
+*.pdb
+
+# NuGet
+packages/
+*.nupkg
+
+# Build directories
+bin/
+obj/
+
+# Rider / VSCode
+.idea/
+.vscode/
+
+# DotNet
+*.csproj.user
+project.lock.json
+
+# Test results
+TestResults/
+
+# Local secrets
+secrets.json
+
+# Ignore Windows runtime package (binaries, jars, etc.)
+Windows/
+
+# Ignore log files
+*.log
+
+# Ignore coverage and temp
+coverage/
+*.tmp
+*.temp
+
