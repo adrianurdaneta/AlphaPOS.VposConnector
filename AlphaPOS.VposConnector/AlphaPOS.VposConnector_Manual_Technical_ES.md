@@ -106,49 +106,106 @@ Descripción de claves:
 ProgId: AlphaPOS.VposConnector
 Clase COM: VposConnector
 
-Firmas y comportamiento:
+### 7.1 Enfoque recomendado
+
+La API conserva métodos legacy para compatibilidad, pero para nuevas integraciones en VFP se recomienda usar los métodos específicos por caso de negocio (sin JSON de entrada).
+
+### 7.2 Métodos base
 
 - bool Init(string iniPath)
-  - Descripción: Inicializa el conector leyendo iniPath, carga configuración, certificado (si aplica) y compone servicios.
-  - Retorno: true = init correcta; false = error (suponer que se ha escrito en log).
-  - Notas: Debe llamarse antes de otros métodos.
+  - Inicializa configuración, HTTP y certificado (si aplica).
 
 - void SetApiKey(string key)
-  - Establece ApiKey en memoria (sobrescribe el valor del INI).
-
 - void SetApiKeyWithHeader(string key, string header)
-  - Establece ApiKey y el nombre de header.
-
 - void SetClientCertificate(string path, string password)
-  - Carga certificado PFX en memoria para uso en fallback TLS.
-
 - void SetLogPath(string path)
-  - Cambia la ruta del archivo de log (si no existe intenta crearla).
-
 - void SetTimeout(int ms)
-  - Ajusta timeout global en milisegundos para operaciones que lo respetan.
+- void ClearLastResult()
+
+- int Ping()
+  - Verifica conectividad del servicio y devuelve estado simplificado.
+
+- int TerminarServicio()
+  - Intenta finalizar el servicio local VPOS REST.
+
+### 7.3 Métodos específicos por negocio (sin JSON desde VFP)
+
+Tarjetas:
+
+- int PagarTarjetaCredito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+- int PagarTarjetaDebito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+- int PagarTarjetaOtras(double monto, string cedula, string medioPago, string referencia, string terminalVirtual, double montoDonativo)
+- int AnularTarjetaPorSecuencia(string secuencia, string cedula, string terminalVirtual)
+
+Verificaciones:
+
+- int VerificarP2C(double monto, string telefono, string banco, string terminalVirtual)
+- int VerificarTransferencia(double monto, string cuenta, string banco, string terminalVirtual)
+- int VerificarDeposito(double monto, string cuenta, string banco, string terminalVirtual)
+
+Cards:
+
+- int CardsConsultarSaldo(string cedula)
+- int CardsPagarConOtp(string cedula, double monto)
+
+Lysto:
+
+- int LystoSolicitarOrden(double monto, string terminalVirtual)
+- int LystoCrearOrden(double monto, string cedula, string tipoFinanciamiento, string terminalVirtual)
+- int LystoPagarCuotaInicialC2P(double monto, string idOrden, string terminalVirtual)
+- int LystoConfirmarOrden(double monto, string idOrden, string medioPago, string terminalVirtual)
+- int LystoCancelarOrden(string numSeqOrden, string terminalVirtual)
+
+Cashea:
+
+- int CasheaCrearOrden(double monto, string cedula, string otp, string terminalVirtual)
+- int CasheaConfirmarOrden(string idOrden, double monto, string terminalVirtual)
+- int CasheaCancelarOrden(string idOrden, string terminalVirtual)
+
+Otros medios:
+
+- int PagarCrixto(double monto, string terminalVirtual)
+- int PagarXcapit(double monto, string telefono, string otp, string terminalVirtual)
+- int PagarAccessPay(double monto, string terminalVirtual)
+
+Voucher:
+
+- int ImprimirUltimoVoucherAprobado()
+- int ImprimirUltimoVoucherProcesado()
+
+Método de escape:
+
+- int ExecuteRaw(string endpoint, string jsonRequest)
+  - Permite invocar endpoints `metodo`, `cards`, `lysto` o `terminate` en escenarios no cubiertos por la API específica.
+
+### 7.4 Propiedades de último resultado
+
+- string LastCode
+- string LastMessage
+- string LastStatus
+- string LastSequence
+- string LastVoucher
+- string LastOrderId
+- string LastReference
+- string LastRawResponse
+
+Convención de retorno para métodos `int`:
+
+- `1`: operación aprobada/procesada.
+- `0`: operación rechazada/no aprobada.
+- `-1`: error técnico.
+
+### 7.5 Métodos legacy (compatibilidad)
 
 - string TestConnection()
-  - Ejecuta request simple al endpoint para comprobar conectividad.
-  - Retorna "OK" o mensaje/JSON de error.
-
 - string StartTransaction(string jsonRequest)
-  - Envía petición de inicio de transacción. jsonRequest es cadena JSON con payload requerido por VPOS.
-  - Retorna respuesta del servidor como string JSON o mensaje de error.
-  - Nota: Operación potencialmente larga (PIN-pad). Ajustar timeout y ejecutar en background si la UI no debe bloquearse.
-
 - string PollStatus(string transactionId)
-  - Consulta estado de una transacción.
-
 - string GetVoucher(string transactionId)
-  - Obtiene voucher asociado a la transacción (texto o JSON según implementación del servidor).
-
 - string CancelTransaction(string transactionId)
-  - Solicita cancelación y devuelve respuesta.
 
-Comportamiento especial:
-- Si Init no fue invocado correctamente, los métodos que devuelven string retornan la cadena literal "NO_INIT".
-- Los métodos atrapan excepciones internas, registran el error y devuelven mensajes descriptivos en lugar de lanzar excepciones a VFP.
+Comportamiento especial legacy:
+
+- Si Init no fue invocado correctamente, los métodos legacy string retornan `"NO_INIT"`.
 
 8) Flujo de autenticación (ApiKey + fallback Certificado TLS)
 -------------------------------------------------------------
@@ -179,10 +236,22 @@ Recomendaciones de seguridad:
 
 10) Manejo de errores y valores de retorno
 -----------------------------------------
-- "NO_INIT": devuelto por métodos string si Init no fue ejecutado con éxito.
-- Respuesta JSON de error: el servidor puede retornar estructuras JSON con claves "error", "message" o códigos — parsear y actuar en cliente.
-- Errores locales: timeout, problemas de red, fallo de carga del certificado — se registran y se devuelven como texto descriptivo.
-- Si la respuesta es vacía, trate como error y consulte logs.
+API específica (`int`):
+
+- `1`: operación aprobada/procesada.
+- `0`: operación rechazada/no aprobada.
+- `-1`: error técnico.
+
+El detalle de cada resultado se expone en propiedades `Last*`:
+
+- `LastCode`, `LastMessage`, `LastStatus`, `LastRawResponse` y, según el caso, `LastSequence`, `LastVoucher`, `LastOrderId`.
+
+API legacy (`string`):
+
+- `"NO_INIT"`: devuelto por métodos string si Init no fue ejecutado con éxito.
+- Respuesta JSON de error: el servidor puede retornar estructuras con claves "error", "message" o códigos.
+- Errores locales: timeout, red, certificado.
+- Si la respuesta es vacía, tratarla como error y revisar log.
 
 11) Consideraciones de hilos y rendimiento
 -----------------------------------------
@@ -234,7 +303,23 @@ ClientCertPath=C:\certs\cliente.pfx
 ClientCertPassword=miPasswordPfx
 TimeoutMs=120000
 
-Ejemplo JSON (StartTransaction):
+Ejemplo VFP (API específica recomendada):
+LOCAL oConn, lnRc
+oConn = CREATEOBJECT("AlphaPOS.VposConnector")
+IF oConn.Init("C:\\vpos_config\\vpos.ini")
+  lnRc = oConn.PagarTarjetaDebito(10100.51, "V12345678", "REF-001", "", 0)
+  IF lnRc = 1
+    ? "Aprobada"
+    ? "Secuencia: " + oConn.LastSequence
+  ELSEIF lnRc = 0
+    ? "Rechazada: " + oConn.LastMessage
+  ELSE
+    ? "Error técnico: " + oConn.LastMessage
+    ? "Raw: " + oConn.LastRawResponse
+  ENDIF
+ENDIF
+
+Ejemplo JSON (legacy StartTransaction):
 {
   "merchantTransactionId": "T-0001",
   "amount": 125.50,
@@ -242,7 +327,7 @@ Ejemplo JSON (StartTransaction):
   "cardHolderId": "V12345678"
 }
 
-Ejemplo VFP (sincrónico, simple):
+Ejemplo VFP (legacy sincrónico, simple):
 LOCAL oConn, lOk, lcResp
 oConn = CREATEOBJECT("AlphaPOS.VposConnector")
 IF oConn.Init("C:\\vpos_config\\vpos.ini")
@@ -252,17 +337,20 @@ ELSE
   MESSAGEBOX("Init falló",16)
 ENDIF
 
-Ejemplo VFP (recomendado — asincrónico simple - esquema):
-* 1) Llamar a un proceso externo o crear tarea para invocar StartTransaction y almacenar resultado en fichero/BD
+Ejemplo VFP (legacy asincrónico simple - esquema):
+* 1) Llamar a proceso/tarea para StartTransaction y guardar resultado
 * 2) PollStatus desde UI para no bloquear
 
 17) Solución de problemas (FAQ)
 -------------------------------
-Q: StartTransaction bloquea la UI. ¿Qué hacer?
-A: Ejecutar la llamada en segundo plano (otro proceso o tarea), aumentar timeout si el PIN-pad requiere interacción.
+Q: PagarTarjetaDebito / PagarTarjetaCredito devuelve -1. ¿Qué revisar?
+A: Revisar `LastMessage`, `LastRawResponse`, conectividad local VPOS (`Ping`) y log de la DLL.
 
-Q: Recibo "NO_INIT" al llamar StartTransaction.
-A: Asegurarse de invocar Init(iniPath) con la ruta correcta, permisos de lectura y que Merchant_Server esté configurado.
+Q: StartTransaction bloquea la UI. ¿Qué hacer?
+A: Es método legacy. Preferir API específica; si se usa legacy, ejecutar en segundo plano y ajustar timeout.
+
+Q: Recibo "NO_INIT" al llamar métodos legacy.
+A: Invocar Init(iniPath) y validar ruta/permisos del INI, además de Merchant_Server.
 
 Q: 401/403 persistent e intento con certificado falla.
 A: Validar ApiKey (si aplica), comprobar si el servidor exige solo certificado cliente, revisar que PFX y contraseña son correctos y que CN/SAN del certificado es aceptado por el servidor.
