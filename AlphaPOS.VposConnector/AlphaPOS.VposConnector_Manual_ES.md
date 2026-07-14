@@ -81,48 +81,104 @@ Descripción de claves:
 ProgId: AlphaPOS.VposConnector
 Clase: VposConnector
 
-Métodos públicos (firmas y comportamiento):
+La DLL mantiene métodos legacy para compatibilidad, pero la integración recomendada en VFP es usar la API específica por caso de negocio (sin JSON de entrada).
+
+### 5.1 Métodos base
 
 - bool Init(string iniPath)
   - Inicializa el conector leyendo la configuración desde iniPath.
-  - Devuelve true si la inicialización fue correcta.
-  - Si falla, la DLL registra el error y devuelve false.
 
 - void SetApiKey(string key)
-  - Establece (en tiempo de ejecución) la ApiKey que se enviará en el header.
-
 - void SetApiKeyWithHeader(string key, string header)
-  - Establece ApiKey y el nombre del header a usar (p.ej. "X-Api-Key").
-
 - void SetClientCertificate(string path, string password)
-  - Carga el certificado cliente desde un PFX (ruta local). No verifica permisos especiales.
-
 - void SetLogPath(string path)
-  - Cambia la ruta del archivo de log. Si no se establece, usa: <BaseDir>\AlphaPOS.VposConnector.log
-
 - void SetTimeout(int ms)
-  - Cambia el timeout global (ms) utilizado por algunas operaciones.
+- void ClearLastResult()
+
+- int Ping()
+  - Prueba conectividad de forma simplificada.
+
+- int TerminarServicio()
+  - Invoca finalización del servicio local VPOS.
+
+### 5.2 Métodos específicos por negocio (recomendados para VFP)
+
+Tarjetas:
+
+- int PagarTarjetaCredito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+- int PagarTarjetaDebito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+- int PagarTarjetaOtras(double monto, string cedula, string medioPago, string referencia, string terminalVirtual, double montoDonativo)
+- int AnularTarjetaPorSecuencia(string secuencia, string cedula, string terminalVirtual)
+
+Verificaciones:
+
+- int VerificarP2C(double monto, string telefono, string banco, string terminalVirtual)
+- int VerificarTransferencia(double monto, string cuenta, string banco, string terminalVirtual)
+- int VerificarDeposito(double monto, string cuenta, string banco, string terminalVirtual)
+
+Cards:
+
+- int CardsConsultarSaldo(string cedula)
+- int CardsPagarConOtp(string cedula, double monto)
+
+Lysto:
+
+- int LystoSolicitarOrden(double monto, string terminalVirtual)
+- int LystoCrearOrden(double monto, string cedula, string tipoFinanciamiento, string terminalVirtual)
+- int LystoPagarCuotaInicialC2P(double monto, string idOrden, string terminalVirtual)
+- int LystoConfirmarOrden(double monto, string idOrden, string medioPago, string terminalVirtual)
+- int LystoCancelarOrden(string numSeqOrden, string terminalVirtual)
+
+Cashea:
+
+- int CasheaCrearOrden(double monto, string cedula, string otp, string terminalVirtual)
+- int CasheaConfirmarOrden(string idOrden, double monto, string terminalVirtual)
+- int CasheaCancelarOrden(string idOrden, string terminalVirtual)
+
+Otros medios:
+
+- int PagarCrixto(double monto, string terminalVirtual)
+- int PagarXcapit(double monto, string telefono, string otp, string terminalVirtual)
+- int PagarAccessPay(double monto, string terminalVirtual)
+
+Voucher:
+
+- int ImprimirUltimoVoucherAprobado()
+- int ImprimirUltimoVoucherProcesado()
+
+Escape avanzado:
+
+- int ExecuteRaw(string endpoint, string jsonRequest)
+  - Útil solo para casos no cubiertos por métodos específicos.
+
+### 5.3 Propiedades de último resultado (sin parsear JSON)
+
+- string LastCode
+- string LastMessage
+- string LastStatus
+- string LastSequence
+- string LastVoucher
+- string LastOrderId
+- string LastReference
+- string LastRawResponse
+
+Convención de retorno de métodos `int`:
+
+- `1`: operación procesada/aprobada.
+- `0`: operación rechazada/no aprobada.
+- `-1`: error técnico.
+
+Métodos legacy (compatibilidad):
 
 - string TestConnection()
-  - Realiza un request simple al endpoint para verificar conectividad. Devuelve "OK" o mensaje de error.
-
 - string StartTransaction(string jsonRequest)
-  - Envía la petición de inicio de transacción. jsonRequest es una cadena JSON con los campos que su backend espera.
-  - Devuelve la respuesta del servidor como cadena (normalmente JSON). Puede incluir transactionId.
-  - Nota: Esta operación puede demorar (PIN-pad, interacción) — ajustar timeout.
-
 - string PollStatus(string transactionId)
-  - Consulta el estado de la transacción identificada por transactionId.
-  - Devuelve respuesta JSON/string con campos de estado.
-
 - string GetVoucher(string transactionId)
-  - Descarga o devuelve la información del voucher asociado a la transacción.
-
 - string CancelTransaction(string transactionId)
-  - Solicita la cancelación de la transacción. Devuelve respuesta del servidor.
 
-Valores especiales:
-- Si Init no fue llamado, los métodos que devuelven string retornan la cadena literal: "NO_INIT".
+Valor especial legacy:
+
+- Si Init no fue llamado, los métodos legacy que devuelven string retornan `"NO_INIT"`.
 
 6) Comportamiento de autenticación
 ----------------------------------
@@ -138,12 +194,26 @@ Valores especiales:
 
 8) Ejemplos (resumen)
 ---------------------
-- Ver el archivo example_from_vfp.prg en la raíz del repo para ejemplos completos:
-  - Inicialización y TestConnection
-  - StartTransaction básico
-  - Flujo con Polling y GetVoucher
-  - CancelTransaction
-  - Configuración dinámica desde VFP (ApiKey y Cert)
+- Ver el archivo example_from_vfp.prg en la raíz del repo para ejemplos legacy.
+- Para nuevas integraciones en VFP, usar preferiblemente métodos específicos por negocio.
+
+Ejemplo rápido (VFP) con API específica:
+
+LOCAL oConn, lnRc
+oConn = CREATEOBJECT("AlphaPOS.VposConnector")
+
+IF oConn.Init("C:\\vpos_config\\vpos.ini")
+    lnRc = oConn.PagarTarjetaDebito(10100.51, "V12345678", "REF-001", "", 0)
+    IF lnRc = 1
+        ? "Aprobada"
+        ? "Secuencia: " + oConn.LastSequence
+    ELSEIF lnRc = 0
+        ? "Rechazada: " + oConn.LastMessage
+    ELSE
+        ? "Error técnico: " + oConn.LastMessage
+        ? "Raw: " + oConn.LastRawResponse
+    ENDIF
+ENDIF
 
 9) Recomendaciones de implementación en VFP
 -------------------------------------------
