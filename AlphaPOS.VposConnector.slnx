@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AlphaPOS.VposConnector.Tests/AlphaPOS.VposConnector.Tests.csproj" />
+  <Project Path="AlphaPOS.VposConnector/AlphaPOS.VposConnector.csproj" />
+</Solution>
