@@ -1,44 +1,59 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using AlphaPOS.VposConnector.Infrastructure.Http;
-using AlphaPOS.VposConnector.Infrastructure.Security;
-using AlphaPOS.VposConnector.Infrastructure.Logging;
+using System;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using System.Net;
+using AlphaPOS.VposConnector.Infrastructure.Http;
+using AlphaPOS.VposConnector.Infrastructure.Logging;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AlphaPOS.VposConnector.Tests
 {
     [TestClass]
     public class HttpClientWrapperTests
     {
-        private class SequenceHttpClientWrapper : HttpClientWrapper
+        private class OkHttpClientWrapper : HttpClientWrapper
         {
-            private int _calls = 0;
-            public SequenceHttpClientWrapper(FileLogger logger, ClientCertificateProvider certProvider) : base(logger, certProvider) { }
+            public OkHttpClientWrapper(FileLogger logger) : base(logger)
+            {
+            }
 
             protected override string ExecuteRequest(HttpWebRequest req, string body)
             {
-                _calls++;
-                if (_calls == 1)
-                {
-                    throw new UnauthorizedException("Simulated unauthorized");
-                }
-                return "CERT_OK";
+                return "OK_RESPONSE";
+            }
+        }
+
+        private class FailingHttpClientWrapper : HttpClientWrapper
+        {
+            public FailingHttpClientWrapper(FileLogger logger) : base(logger)
+            {
+            }
+
+            protected override string ExecuteRequest(HttpWebRequest req, string body)
+            {
+                throw new InvalidOperationException("simulated-failure");
             }
         }
 
         [TestMethod]
-        public void Send_WithApiKey_Unauthorized_Then_CertFallback_ReturnsCertOk()
+        public void Send_ReturnsResponse_WhenRequestSucceeds()
         {
             var logger = new FileLogger(Path.Combine(Path.GetTempPath(), "hcw_test.log"));
-            var certProv = new ClientCertificateProvider();
-            certProv.SetCertificate(new X509Certificate2()); // empty cert for test
+            var wrapper = new OkHttpClientWrapper(logger);
 
-            var wrapper = new SequenceHttpClientWrapper(logger, certProv);
-            wrapper.SetApiKey("dummy-key", "X-Api-Key");
+            var result = wrapper.Send("http://localhost:8085/vpos/metodo", "POST", "{\"accion\":\"tarjeta\"}", 10000);
 
-            var result = wrapper.Send("https://api.test", "POST", "{\"monto\":1}", 10000);
-            Assert.AreEqual("CERT_OK", result);
+            Assert.AreEqual("OK_RESPONSE", result);
+        }
+
+        [TestMethod]
+        public void Send_ReturnsErrorPrefix_WhenRequestFails()
+        {
+            var logger = new FileLogger(Path.Combine(Path.GetTempPath(), "hcw_test.log"));
+            var wrapper = new FailingHttpClientWrapper(logger);
+
+            var result = wrapper.Send("http://localhost:8085/vpos/metodo", "POST", "{\"accion\":\"tarjeta\"}", 10000);
+
+            StringAssert.StartsWith(result, "ERROR:");
         }
     }
 }
