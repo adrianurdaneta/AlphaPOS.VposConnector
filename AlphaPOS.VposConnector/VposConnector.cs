@@ -1,14 +1,13 @@
 using System;
-using System.Runtime.InteropServices;
+using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using AlphaPOS.VposConnector.Application;
 using AlphaPOS.VposConnector.Domain;
-using AlphaPOS.VposConnector.Infrastructure.Config;
 using AlphaPOS.VposConnector.Infrastructure.Http;
 using AlphaPOS.VposConnector.Infrastructure.Logging;
-using AlphaPOS.VposConnector.Infrastructure.Security;
-using System.Globalization;
-using System.Text;
 
 namespace AlphaPOS.VposConnector
 {
@@ -18,10 +17,10 @@ namespace AlphaPOS.VposConnector
     [ClassInterface(ClassInterfaceType.AutoDual)]
     public class VposConnector
     {
-        private ITransactionService _service;
-        private FileLogger _logger;
-        private IniConfiguration _config;
-        private ClientCertificateProvider _certProvider;
+        private const string DefaultBaseUrl = "http://localhost:8085";
+
+        private readonly FileLogger _logger;
+        private readonly ITransactionService _service;
 
         public string LastCode { get; private set; }
         public string LastMessage { get; private set; }
@@ -36,58 +35,14 @@ namespace AlphaPOS.VposConnector
         {
             var defaultLog = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "AlphaPOS.VposConnector.log");
             _logger = new FileLogger(defaultLog);
+            var http = new HttpClientWrapper(_logger);
+            _service = new TransactionService(DefaultBaseUrl, http, _logger);
             ClearLastResult();
         }
 
-        public bool Init(string iniPath)
+        public void SetBaseUrl(string baseUrl)
         {
-            try
-            {
-                _config = new IniConfiguration(iniPath);
-                var baseUrl = _config.Get("General", "Merchant_Server")?.Trim();
-                if (string.IsNullOrEmpty(baseUrl)) return false;
-
-                _certProvider = new ClientCertificateProvider();
-                var certPath = _config.Get("General", "ClientCertPath");
-                var certPass = _config.Get("General", "ClientCertPassword");
-                if (!string.IsNullOrEmpty(certPath)) _certProvider.LoadCertificate(certPath, certPass);
-
-                var http = new HttpClientWrapper(_logger, _certProvider);
-                _service = new TransactionService(baseUrl, http, _logger, _certProvider);
-
-                var apiKey = _config.Get("General", "ApiKey");
-                var apiKeyHeader = _config.Get("General", "ApiKeyHeader");
-                if (!string.IsNullOrEmpty(apiKey)) _service.SetApiKey(apiKey, string.IsNullOrEmpty(apiKeyHeader) ? "X-Api-Key" : apiKeyHeader);
-
-                var timeout = _config.Get("General", "TimeoutMs");
-                if (int.TryParse(timeout, out int t) && t > 0) _service.SetTimeout(t);
-
-                _logger.Info("Init completed. baseUrl={0}", baseUrl);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                _logger.Error("Init error: {0}", ex.Message);
-                return false;
-            }
-        }
-
-        public void SetApiKey(string key)
-        {
-            if (_service == null) { _logger.Error("SetApiKey: service not initialized"); return; }
-            _service.SetApiKey(key);
-        }
-
-        public void SetApiKeyWithHeader(string key, string header)
-        {
-            if (_service == null) { _logger.Error("SetApiKeyWithHeader: service not initialized"); return; }
-            _service.SetApiKey(key, header);
-        }
-
-        public void SetClientCertificate(string path, string password)
-        {
-            if (_certProvider == null) _certProvider = new ClientCertificateProvider();
-            _certProvider.LoadCertificate(path, password);
+            _service.SetBaseUrl(baseUrl);
         }
 
         public void SetLogPath(string path)
@@ -98,43 +53,12 @@ namespace AlphaPOS.VposConnector
 
         public void SetTimeout(int ms)
         {
-            _service?.SetTimeout(ms);
+            _service.SetTimeout(ms);
         }
 
         public string TestConnection()
         {
-            if (_service == null) return "NO_INIT";
             return _service.TestConnection();
-        }
-
-        public int Ping()
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-            return SetResultFromResponse(_service.TestConnection());
-        }
-
-        public string StartTransaction(string jsonRequest)
-        {
-            if (_service == null) return "NO_INIT";
-            return _service.StartTransaction(jsonRequest);
-        }
-
-        public string PollStatus(string transactionId)
-        {
-            if (_service == null) return "NO_INIT";
-            return _service.PollStatus(transactionId);
-        }
-
-        public string GetVoucher(string transactionId)
-        {
-            if (_service == null) return "NO_INIT";
-            return _service.GetVoucher(transactionId);
-        }
-
-        public string CancelTransaction(string transactionId)
-        {
-            if (_service == null) return "NO_INIT";
-            return _service.CancelTransaction(transactionId);
         }
 
         public void ClearLastResult()
@@ -149,317 +73,103 @@ namespace AlphaPOS.VposConnector
             LastRawResponse = string.Empty;
         }
 
-        public int TerminarServicio()
+        public int PagarTarjetaDebito(double monto, string cedula)
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-            return SetResultFromResponse(_service.TerminateService());
+            return PagarTarjeta(monto, cedula);
         }
 
-        public int PagarTarjetaCredito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+        public int PagarTarjetaCredito(double monto, string cedula)
         {
-            return PagarTarjeta("Credito", monto, cedula, "", referencia, terminalVirtual, montoDonativo);
+            return PagarTarjeta(monto, cedula);
         }
 
-        public int PagarTarjetaDebito(double monto, string cedula, string referencia, string terminalVirtual, double montoDonativo)
+        public int AnularTarjetaPorSecuencia(string secuencia, string cedula)
         {
-            return PagarTarjeta("Debito", monto, cedula, "", referencia, terminalVirtual, montoDonativo);
-        }
-
-        public int PagarTarjetaOtras(double monto, string cedula, string medioPago, string referencia, string terminalVirtual, double montoDonativo)
-        {
-            return PagarTarjeta("N/A", monto, cedula, medioPago, referencia, terminalVirtual, montoDonativo);
-        }
-
-        public int AnularTarjetaPorSecuencia(string secuencia, string cedula, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(
                 Tuple.Create("accion", "anulacion", false),
                 Tuple.Create("numSeq", secuencia, false),
-                Tuple.Create("cedula", cedula, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
+                Tuple.Create("cedula", cedula, false));
 
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
-        public int VerificarP2C(double monto, string telefono, string banco, string terminalVirtual)
+        public int VerificarP2C(double monto, string telefono, string banco)
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(
                 Tuple.Create("accion", "verificacionP2C", false),
                 Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
                 Tuple.Create("telefono", telefono, false),
-                Tuple.Create("banco", banco, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
+                Tuple.Create("banco", banco, false));
 
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
-        public int VerificarTransferencia(double monto, string cuenta, string banco, string terminalVirtual)
+        public int PagarConCambio(double monto, string cedula, string tipoMoneda)
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "verificacionTransferencia", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("cuenta", cuenta, false),
-                Tuple.Create("banco", banco, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int VerificarDeposito(double monto, string cuenta, string banco, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "verificacionDeposito", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("cuenta", cuenta, false),
-                Tuple.Create("banco", banco, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int PagarConCambio(double monto, string cedula, string tipoMoneda, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(
                 Tuple.Create("accion", "cambio", false),
                 Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
                 Tuple.Create("cedula", cedula, false),
-                Tuple.Create("tipoMoneda", tipoMoneda, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
+                Tuple.Create("tipoMoneda", tipoMoneda, false));
 
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
-        public int PagarBiopago(double monto, string cedula, string terminalVirtual)
+        public int PagarBiopago(double monto, string cedula)
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(
                 Tuple.Create("accion", "serviciosExternos", false),
                 Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("cedula", cedula, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
+                Tuple.Create("cedula", cedula, false));
 
+            return SetResultFromResponse(_service.ExecuteMetodo(json));
+        }
+
+        public int ObtenerMediosPago()
+        {
+            var json = BuildJson(Tuple.Create("accion", "obtenerMediosPago", false));
+            return SetResultFromResponse(_service.ExecuteMetodo(json));
+        }
+
+        public int ImprimirUltimoVoucherAprobado()
+        {
+            var json = BuildJson(Tuple.Create("accion", "imprimeUltimoVoucher", false));
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
         public int EjecutarPrecierre()
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(Tuple.Create("accion", "precierre", false));
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
         public int EjecutarCierre()
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(Tuple.Create("accion", "cierre", false));
             return SetResultFromResponse(_service.ExecuteMetodo(json));
         }
 
-        public int CardsConsultarSaldo(string cedula)
+        private int PagarTarjeta(double monto, string cedula)
         {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "consultaSaldoTFisica", false),
-                Tuple.Create("cedula", cedula, false));
-
-            return SetResultFromResponse(_service.ExecuteCards(json));
-        }
-
-        public int CardsPagarConOtp(string cedula, double monto)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "compraCards", false),
-                Tuple.Create("cedula", cedula, false),
-                Tuple.Create("saldoPagar", monto.ToString(CultureInfo.InvariantCulture), true));
-
-            return SetResultFromResponse(_service.ExecuteCards(json));
-        }
-
-        public int LystoSolicitarOrden(double monto, string terminalVirtual)
-        {
-            return ExecuteLystoAction(
-                Tuple.Create("accion", "solicitudLysto", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-        }
-
-        public int LystoCrearOrden(double monto, string cedula, string tipoFinanciamiento, string terminalVirtual)
-        {
-            return ExecuteLystoAction(
-                Tuple.Create("accion", "creacionLysto", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("cedula", cedula, false),
-                Tuple.Create("tipoFinanciamiento", tipoFinanciamiento, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-        }
-
-        public int LystoPagarCuotaInicialC2P(double monto, string idOrden, string terminalVirtual)
-        {
-            return ExecuteLystoAction(
-                Tuple.Create("accion", "confirmacionLysto", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("idOrden", idOrden, false),
-                Tuple.Create("medioPago", "merchant", false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-        }
-
-        public int LystoConfirmarOrden(double monto, string idOrden, string medioPago, string terminalVirtual)
-        {
-            return ExecuteLystoAction(
-                Tuple.Create("accion", "confirmacionLysto", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("idOrden", idOrden, false),
-                Tuple.Create("medioPago", medioPago, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-        }
-
-        public int LystoCancelarOrden(string numSeqOrden, string terminalVirtual)
-        {
-            return ExecuteLystoAction(
-                Tuple.Create("accion", "cancelacionLysto", false),
-                Tuple.Create("numSeqOrden", numSeqOrden, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-        }
-
-        public int CasheaCrearOrden(double monto, string cedula, string otp, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "crearOrdenCashea", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("cedula", cedula, false),
-                Tuple.Create("otp", otp, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int CasheaConfirmarOrden(string idOrden, double monto, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "confirmacionCashea", false),
-                Tuple.Create("idOrden", idOrden, false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int CasheaCancelarOrden(string idOrden, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "cancelacionCashea", false),
-                Tuple.Create("idOrden", idOrden, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int PagarCrixto(double monto, string terminalVirtual)
-        {
-            return PagarTarjeta("N/A", monto, string.Empty, "Crixto", string.Empty, terminalVirtual, 0);
-        }
-
-        public int PagarXcapit(double monto, string telefono, string otp, string terminalVirtual)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(
-                Tuple.Create("accion", "tarjeta", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
-                Tuple.Create("medioPago", "Xcapit", false),
-                Tuple.Create("telefono", telefono, false),
-                Tuple.Create("otp", otp, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false));
-
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int PagarAccessPay(double monto, string terminalVirtual)
-        {
-            return PagarTarjeta("N/A", monto, string.Empty, "Access Pay", string.Empty, terminalVirtual, 0);
-        }
-
-        public int ImprimirUltimoVoucherAprobado()
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(Tuple.Create("accion", "imprimeUltimoVoucher", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int ImprimirUltimoVoucherProcesado()
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            var json = BuildJson(Tuple.Create("accion", "imprimeUltimoVoucherP", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        public int ExecuteRaw(string endpoint, string jsonRequest)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
-            if (string.Equals(endpoint, "metodo", StringComparison.OrdinalIgnoreCase))
-                return SetResultFromResponse(_service.ExecuteMetodo(jsonRequest));
-            if (string.Equals(endpoint, "cards", StringComparison.OrdinalIgnoreCase))
-                return SetResultFromResponse(_service.ExecuteCards(jsonRequest));
-            if (string.Equals(endpoint, "lysto", StringComparison.OrdinalIgnoreCase))
-                return SetResultFromResponse(_service.ExecuteLysto(jsonRequest));
-            if (string.Equals(endpoint, "terminate", StringComparison.OrdinalIgnoreCase))
-                return SetResultFromResponse(_service.TerminateService());
-
-            return SetTechnicalError("UNKNOWN_ENDPOINT");
-        }
-
-        private int PagarTarjeta(string tipoTarjeta, double monto, string cedula, string medioPago, string referencia, string terminalVirtual, double montoDonativo)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-
             var json = BuildJson(
                 Tuple.Create("accion", "tarjeta", false),
                 Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
                 Tuple.Create("cedula", cedula, false),
-                Tuple.Create("tipoTarjeta", tipoTarjeta, false),
-                Tuple.Create("medioPago", medioPago, false),
-                Tuple.Create("referencia", referencia, false),
-                Tuple.Create("terminalVirtual", terminalVirtual, false),
-                Tuple.Create("montoDonativo", montoDonativo.ToString(CultureInfo.InvariantCulture), true));
+                Tuple.Create("medioPago", string.Empty, false));
 
             return SetResultFromResponse(_service.ExecuteMetodo(json));
-        }
-
-        private int ExecuteLystoAction(params Tuple<string, string, bool>[] values)
-        {
-            if (_service == null) return SetTechnicalError("NO_INIT");
-            var json = BuildJson(values);
-            return SetResultFromResponse(_service.ExecuteLysto(json));
         }
 
         private int SetResultFromResponse(string response)
         {
             LastRawResponse = response ?? string.Empty;
+            LastCode = string.Empty;
+            LastMessage = string.Empty;
+            LastStatus = string.Empty;
+            LastSequence = string.Empty;
+            LastVoucher = string.Empty;
+            LastOrderId = string.Empty;
+            LastReference = string.Empty;
 
             if (string.IsNullOrWhiteSpace(response))
             {
@@ -469,36 +179,71 @@ namespace AlphaPOS.VposConnector
                 return -1;
             }
 
-            var normalized = response.ToLowerInvariant();
-            if (normalized.Contains("error") || normalized.Contains("exception") || normalized.Contains("timeout") || normalized.StartsWith("error"))
+            LastCode = ExtractJsonString(response, "codRespuesta");
+            LastMessage = ExtractJsonString(response, "mensajeRespuesta");
+            LastSequence = ExtractJsonValue(response, "numSeq");
+            LastVoucher = ExtractJsonString(response, "nombreVoucher");
+            LastReference = ExtractJsonString(response, "numeroReferencia");
+            LastOrderId = ExtractJsonString(response, "idOrden");
+
+            if (string.IsNullOrEmpty(LastMessage))
             {
-                LastCode = "TECH_ERROR";
                 LastMessage = response;
+            }
+
+            if (ContainsIgnoreCase(response, "ERROR:") || ContainsIgnoreCase(response, "exception"))
+            {
+                LastCode = string.IsNullOrEmpty(LastCode) ? "TECH_ERROR" : LastCode;
                 LastStatus = "ERROR";
                 return -1;
             }
 
-            if (normalized.Contains("rechaz") || normalized.Contains("declin") || normalized.Contains("deneg"))
+            var approved = string.Equals(LastCode, "00", StringComparison.OrdinalIgnoreCase) || ContainsIgnoreCase(LastMessage, "APROBADA");
+            if (approved)
             {
-                LastCode = "REJECTED";
-                LastMessage = response;
+                LastCode = string.IsNullOrEmpty(LastCode) ? "00" : LastCode;
+                LastStatus = "APPROVED";
+                return 1;
+            }
+
+            var rejected = (!string.IsNullOrEmpty(LastCode) && !string.Equals(LastCode, "00", StringComparison.OrdinalIgnoreCase))
+                || ContainsIgnoreCase(LastMessage, "RECHAZ")
+                || ContainsIgnoreCase(LastMessage, "DECLIN")
+                || ContainsIgnoreCase(LastMessage, "DENEG");
+
+            if (rejected)
+            {
+                LastCode = string.IsNullOrEmpty(LastCode) ? "REJECTED" : LastCode;
                 LastStatus = "REJECTED";
                 return 0;
             }
 
-            LastCode = "OK";
-            LastMessage = "Operacion procesada";
-            LastStatus = "APPROVED";
-            return 1;
+            LastCode = string.IsNullOrEmpty(LastCode) ? "UNKNOWN_RESPONSE" : LastCode;
+            LastStatus = "ERROR";
+            return -1;
         }
 
-        private int SetTechnicalError(string message)
+        private static bool ContainsIgnoreCase(string value, string token)
         {
-            LastCode = "TECH_ERROR";
-            LastMessage = message;
-            LastStatus = "ERROR";
-            LastRawResponse = message;
-            return -1;
+            return !string.IsNullOrEmpty(value) && value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string ExtractJsonString(string response, string key)
+        {
+            var pattern = "\""+ Regex.Escape(key) + "\"\\s*:\\s*\"([^\"]*)\"";
+            var match = Regex.Match(response ?? string.Empty, pattern, RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        private static string ExtractJsonValue(string response, string key)
+        {
+            var pattern = "\"" + Regex.Escape(key) + "\"\\s*:\\s*(\"([^\"]*)\"|[-]?[0-9]+)";
+            var match = Regex.Match(response ?? string.Empty, pattern, RegexOptions.CultureInvariant);
+            if (!match.Success) return string.Empty;
+
+            var quotedValue = match.Groups[2].Value;
+            if (!string.IsNullOrEmpty(quotedValue)) return quotedValue;
+            return match.Groups[1].Value.Trim('"');
         }
 
         private static string BuildJson(params Tuple<string, string, bool>[] values)
