@@ -48,6 +48,30 @@ namespace AlphaPOS.VposConnector.Application
             return _http.Send(_baseUrl, "POST", jsonRequest ?? "{}", _timeoutMs);
         }
 
+        public string ExecuteMetodo(string jsonRequest)
+        {
+            var url = _baseUrl + "/vpos/metodo";
+            return _http.Send(url, "POST", jsonRequest ?? "{}", _timeoutMs);
+        }
+
+        public string ExecuteCards(string jsonRequest)
+        {
+            var url = _baseUrl + "/vpos/metodo_cards";
+            return _http.Send(url, "POST", jsonRequest ?? "{}", _timeoutMs);
+        }
+
+        public string ExecuteLysto(string jsonRequest)
+        {
+            var url = _baseUrl + "/vpos/metodo_lysto";
+            return _http.Send(url, "POST", jsonRequest ?? "{}", _timeoutMs);
+        }
+
+        public string TerminateService()
+        {
+            var url = _baseUrl + "/vpos/metodo_terminate";
+            return _http.Send(url, "GET", null, 10000);
+        }
+
         public string PollStatus(string transactionId)
         {
             var url = _baseUrl + "/status/" + Uri.EscapeDataString(transactionId ?? string.Empty);
