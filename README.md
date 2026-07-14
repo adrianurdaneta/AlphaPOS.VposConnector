@@ -40,7 +40,7 @@ Registro COM
 
 Archivos clave
 --------------
-- example_from_vfp.prg: varios ejemplos (Init, TestConnection, StartTransaction, PollStatus, GetVoucher, CancelTransaction, SetApiKey, SetClientCertificate, SetLogPath, SetTimeout)
+- example_from_vfp.prg: ejemplos de Fase 1 para VFP (Tarjetas, VerificarP2C, PagarConCambio, PagarBiopago, Precierre/Cierre)
 - AlphaPOS.VposConnector_Manual_ES.md: manual completo con configuración INI, descripción de métodos COM, autenticación y recomendaciones de despliegue.
 - register_dll.bat: script para registrar/desregistrar la DLL con RegAsm.
 
@@ -57,7 +57,7 @@ Notas importantes
 
 Siguientes pasos sugeridos
 -------------------------
-- Proveer endpoints y esquema JSON reales para ajustar TransactionService a los paths exactos de VPOS.
+- Completar fases siguientes de endpoints VPOS no incluidos en Fase 1 (Cards expandido, administrativos y otros medios).
 - Preparar paquete instalable y documentación de certificación.
 - En producción, usar almacenamiento seguro para ApiKeys y certificados (no PFX en disco sin protección).
 
@@ -70,4 +70,3 @@ Documentos y manuales
 - Instrucciones de ejecución de VPOS REST (resumen): [VPOS_Run_Instructions.md](./VPOS_Run_Instructions.md)
 - Pasos de despliegue para producción (copy/paste): [VPOS_Production_Steps.md](./VPOS_Production_Steps.md)
 - Manual técnico de la DLL (español): [AlphaPOS.VposConnector/AlphaPOS.VposConnector_Manual_Technical_ES.md](./AlphaPOS.VposConnector/AlphaPOS.VposConnector_Manual_Technical_ES.md)
-

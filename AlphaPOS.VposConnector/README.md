@@ -15,7 +15,7 @@ Archivos creados
 ----------------
 - AlphaPOS.VposConnector.csproj  (proyecto)
 - AssemblyInfo.cs                  (atributos COM)
-- VposConnector.cs                 (implementación básica HTTP/INI)
+- VposConnector.cs                 (fachada COM con API simple para VFP)
 - README.md                        (esta documentación)
 - example_from_vfp.prg             (ejemplo de uso desde VFP)
 
@@ -27,27 +27,34 @@ Construcción y registro
 3. Registrar la DLL para COM (usar la versión de RegAsm de .NET Framework 4.x x86):
    C:\Windows\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe AlphaPOS.VposConnector.dll /codebase /tlb
 
-Notas sobre configuración
+Notas sobre configuracion
 -------------------------
-- El método Init(iniPath) lee la clave [General] Merchant_Server del archivo .ini. Se espera que Merchant_Server contenga la URL base (por ejemplo: https://merchant.megasoft.com/api).
-- Los métodos StartTransaction, PollStatus, GetVoucher y CancelTransaction construyen rutas relativas simples a partir de esa URL. Ajustar si su endpoint usa rutas diferentes.
+- El metodo Init(iniPath) lee la seccion [General] del INI (ejemplo: `vposconf.ini`).
+- Clave obligatoria: `Merchant_Server` (base URL del servicio local VPOS).
+- Claves opcionales: `ApiKey`, `ApiKeyHeader`, `ClientCertPath`, `ClientCertPassword`, `TimeoutMs`.
+- Endpoints usados por la DLL:
+  - `POST /vpos/metodo`
+  - `POST /vpos/metodo_cards`
+  - `POST /vpos/metodo_lysto`
+  - `GET  /vpos/metodo_terminate`
+
+Metodos simples (Fase 1)
+------------------------
+- Tarjetas: `PagarTarjetaDebito`, `PagarTarjetaCredito`, `AnularTarjetaPorSecuencia`
+- Pago movil: `VerificarP2C`
+- C@mbio: `PagarConCambio`
+- Biopago: `PagarBiopago`
+- Consultas/cierre: `ImprimirUltimoVoucherAprobado`, `EjecutarPrecierre`, `EjecutarCierre`
+- Estado ultimo resultado: `LastCode`, `LastMessage`, `LastStatus`, `LastRawResponse`
 
 Ejemplo en VFP
 --------------
-LOCAL oConn, lcResp
+LOCAL oConn, lnRc
 oConn = CREATEOBJECT("AlphaPOS.VposConnector")
-IF oConn.Init("C:\\ruta\\a\\config.ini")
-  =MESSAGEBOX(oConn.TestConnection())
-  lcResp = oConn.StartTransaction('{"monto":125.50,"cedula":"V12345678"}')
-  ? lcResp
+IF oConn.Init("C:\\vpos\\vposconf.ini")
+  lnRc = oConn.PagarTarjetaDebito(10100.51, "V12345678", "REF-001", "", 0)
+  ? "rc=", lnRc, " msg=", oConn.LastMessage
 ENDIF
-
-Siguientes pasos sugeridos
--------------------------
-1. Confirmar endpoints exactos (paths) para transacciones, status, voucher y cancel.
-2. Añadir manejo de autenticación (API keys, certificados) si el Merchant Server lo requiere.
-3. Implementar logging, retries y soporte de timeouts configurables.
-4. Crear pruebas de integración y preparar paquete para certificación.
 
 Recursos del proyecto
 ---------------------
@@ -62,4 +69,3 @@ Pasos recomendados:
 - Revisar example_from_vfp.prg para patrones de integración con VFP y adaptar un parser JSON robusto.
 - Leer los manuales listados para detalles de configuración, autenticación y certificación.
 - Actualizar el README con endpoints reales y ejemplos que el proveedor VPOS proporcione.
-
