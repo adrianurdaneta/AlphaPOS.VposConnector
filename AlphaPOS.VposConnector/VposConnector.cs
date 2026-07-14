@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -30,6 +29,9 @@ namespace AlphaPOS.VposConnector
         public string LastOrderId { get; private set; }
         public string LastReference { get; private set; }
         public string LastRawResponse { get; private set; }
+        public string LastJsonRequest { get; private set; }
+        public string LastJsonResponse { get; private set; }
+        public string LastUrlRequest { get; private set; }
 
         public VposConnector()
         {
@@ -58,7 +60,11 @@ namespace AlphaPOS.VposConnector
 
         public string TestConnection()
         {
-            return _service.TestConnection();
+            var response = _service.TestConnection();
+            LastJsonRequest = _service.LastJsonRequest ?? string.Empty;
+            LastJsonResponse = _service.LastJsonResponse ?? (response ?? string.Empty);
+            LastUrlRequest = _service.LastUrlRequest ?? string.Empty;
+            return response;
         }
 
         public void ClearLastResult()
@@ -71,14 +77,17 @@ namespace AlphaPOS.VposConnector
             LastOrderId = string.Empty;
             LastReference = string.Empty;
             LastRawResponse = string.Empty;
+            LastJsonRequest = string.Empty;
+            LastJsonResponse = string.Empty;
+            LastUrlRequest = string.Empty;
         }
 
-        public int PagarTarjetaDebito(double monto, string cedula)
+        public int PagarTarjetaDebito(string monto, string cedula)
         {
             return PagarTarjeta(monto, cedula);
         }
 
-        public int PagarTarjetaCredito(double monto, string cedula)
+        public int PagarTarjetaCredito(string monto, string cedula)
         {
             return PagarTarjeta(monto, cedula);
         }
@@ -90,79 +99,89 @@ namespace AlphaPOS.VposConnector
                 Tuple.Create("numSeq", secuencia, false),
                 Tuple.Create("cedula", cedula, false));
 
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
-        public int VerificarP2C(double monto, string telefono, string banco)
+        public int VerificarP2C(string monto, string telefono, string banco)
         {
             var json = BuildJson(
                 Tuple.Create("accion", "verificacionP2C", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
+                Tuple.Create("montoTransaccion", monto, true),
                 Tuple.Create("telefono", telefono, false),
                 Tuple.Create("banco", banco, false));
 
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
-        public int PagarConCambio(double monto, string cedula, string tipoMoneda)
+        public int PagarConCambio(string monto, string cedula, string tipoMoneda)
         {
             var json = BuildJson(
                 Tuple.Create("accion", "cambio", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
+                Tuple.Create("montoTransaccion", monto, true),
                 Tuple.Create("cedula", cedula, false),
                 Tuple.Create("tipoMoneda", tipoMoneda, false));
 
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
-        public int PagarBiopago(double monto, string cedula)
+        public int PagarBiopago(string monto, string cedula)
         {
             var json = BuildJson(
                 Tuple.Create("accion", "serviciosExternos", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
+                Tuple.Create("montoTransaccion", monto, true),
                 Tuple.Create("cedula", cedula, false));
 
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
         public int ObtenerMediosPago()
         {
             var json = BuildJson(Tuple.Create("accion", "obtenerMediosPago", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
         public int ImprimirUltimoVoucherAprobado()
         {
             var json = BuildJson(Tuple.Create("accion", "imprimeUltimoVoucher", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
         public int EjecutarPrecierre()
         {
             var json = BuildJson(Tuple.Create("accion", "precierre", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
         public int EjecutarCierre()
         {
             var json = BuildJson(Tuple.Create("accion", "cierre", false));
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
         }
 
-        private int PagarTarjeta(double monto, string cedula)
+        private int PagarTarjeta(string monto, string cedula)
         {
             var json = BuildJson(
                 Tuple.Create("accion", "tarjeta", false),
-                Tuple.Create("montoTransaccion", monto.ToString(CultureInfo.InvariantCulture), true),
+                Tuple.Create("montoTransaccion", monto, true),
                 Tuple.Create("cedula", cedula, false),
                 Tuple.Create("medioPago", string.Empty, false));
 
-            return SetResultFromResponse(_service.ExecuteMetodo(json));
+            return ExecuteAndSetResult(json);
+        }
+
+        private int ExecuteAndSetResult(string json)
+        {
+            var response = _service.ExecuteMetodo(json);
+            LastJsonRequest = _service.LastJsonRequest ?? (json ?? string.Empty);
+            LastJsonResponse = _service.LastJsonResponse ?? (response ?? string.Empty);
+            LastUrlRequest = _service.LastUrlRequest ?? string.Empty;
+            return SetResultFromResponse(response);
         }
 
         private int SetResultFromResponse(string response)
         {
             LastRawResponse = response ?? string.Empty;
+            LastJsonResponse = LastRawResponse;
             LastCode = string.Empty;
             LastMessage = string.Empty;
             LastStatus = string.Empty;
