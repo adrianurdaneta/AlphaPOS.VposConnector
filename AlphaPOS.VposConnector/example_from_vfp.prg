@@ -25,9 +25,9 @@ lnRc = oConn.PagarTarjetaDebito(100.00, "V16139601")
 ? "PagarTarjetaDebito rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage
 
 *---------------------------------------------------------------------
-* 2) Pago movil (P2C)
+* 2) Pago movil (P2C). La API actual recibe monto y cedula.
 *---------------------------------------------------------------------
-lnRc = oConn.VerificarP2C(0.01, "04121234567", "Mercantil")
+lnRc = oConn.VerificarP2C("0.01", "V16139601")
 ? "VerificarP2C rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage
 
 *---------------------------------------------------------------------
@@ -37,7 +37,7 @@ lnRc = oConn.PagarConCambio(10.00, "V16139601", "VES")
 ? "PagarConCambio rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage
 
 *---------------------------------------------------------------------
-* 4) Biopago (serviciosExternos)
+* 4) Biopago
 *---------------------------------------------------------------------
 lnRc = oConn.PagarBiopago(5.00, "V16139601")
 ? "PagarBiopago rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage
@@ -45,8 +45,8 @@ lnRc = oConn.PagarBiopago(5.00, "V16139601")
 *---------------------------------------------------------------------
 * 5) Consultas/cierre
 *---------------------------------------------------------------------
-lnRc = oConn.ObtenerMediosPago()
-? "ObtenerMediosPago rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage
+lcMedios = oConn.ObtenerMediosPago()
+? "ObtenerMediosPago => " + lcMedios + " / " + oConn.LastMessage
 
 lnRc = oConn.ImprimirUltimoVoucherAprobado()
 ? "ImprimirUltimoVoucherAprobado rc=" + TRANSFORM(lnRc) + " / " + oConn.LastMessage

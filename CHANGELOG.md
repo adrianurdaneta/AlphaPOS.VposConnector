@@ -2,6 +2,19 @@
 
 All notable changes to this project.
 
+## [2026-08-27] - Estado documentado de la implementación actual
+
+### Current implementation
+- La DLL usa REST local directo contra `POST http://localhost:8085/vpos/metodo`.
+- La API pública actual está documentada en `AlphaPOS.VposConnector/README.md` y en los manuales del proyecto.
+- `VerificarP2C`, `VerificarTransferencia` y `VerificarBiopago` reciben `(string monto, string cedula)`.
+- `ObtenerMediosPago()` retorna un `string` CSV, no un código entero.
+- La DLL y los tests deben ejecutarse como x86.
+
+### Documentation
+- Se agregó `AlphaPOS.VposConnector/REVISION_2026-08-27.md` con los riesgos y verificaciones de la revisión.
+- Se retiraron de los manuales las referencias a `Init`, autenticación, certificados y métodos que no existen en el código actual.
+
 ## [2026-05-11] - API específica VFP + alineamiento VPOS
 
 ### Added
