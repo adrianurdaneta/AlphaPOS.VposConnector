@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -26,12 +27,32 @@ namespace AlphaPOS.VposConnector
         public string LastStatus { get; private set; }
         public string LastSequence { get; private set; }
         public string LastVoucher { get; private set; }
+        public string LastVoucherPath { get; private set; }
         public string LastOrderId { get; private set; }
         public string LastReference { get; private set; }
         public string LastRawResponse { get; private set; }
         public string LastJsonRequest { get; private set; }
         public string LastJsonResponse { get; private set; }
         public string LastUrlRequest { get; private set; }
+        public string LastTerminal { get; private set; }
+        public string LastTid { get; private set; }
+        public string LastLote { get; private set; }
+        public string LastTipoTransaccion { get; private set; }
+        public string LastFechaTransaccion { get; private set; }
+        public string LastHoraTransaccion { get; private set; }
+        public string LastNumeroAutorizacion { get; private set; }
+        public string LastCodigoAfiliacion { get; private set; }
+        public string LastCodigoAdquiriente { get; private set; }
+        public string LastNroAutorizador { get; private set; }
+        public string LastTipoTarjeta { get; private set; }
+        public string LastTipoProducto { get; private set; }
+        public string LastTipoCuenta { get; private set; }
+        public string LastMedioPago { get; private set; }
+        public string LastMontoTransaccion { get; private set; }
+        public string LastMontoServicios { get; private set; }
+        public string LastMontoDonativo { get; private set; }
+        public string LastMoneda { get; private set; }
+        public string LastExisteCopiaVoucher { get; private set; }
 
         public VposConnector()
         {
@@ -74,12 +95,32 @@ namespace AlphaPOS.VposConnector
             LastStatus = string.Empty;
             LastSequence = string.Empty;
             LastVoucher = string.Empty;
+            LastVoucherPath = string.Empty;
             LastOrderId = string.Empty;
             LastReference = string.Empty;
             LastRawResponse = string.Empty;
             LastJsonRequest = string.Empty;
             LastJsonResponse = string.Empty;
             LastUrlRequest = string.Empty;
+            LastTerminal = string.Empty;
+            LastTid = string.Empty;
+            LastLote = string.Empty;
+            LastTipoTransaccion = string.Empty;
+            LastFechaTransaccion = string.Empty;
+            LastHoraTransaccion = string.Empty;
+            LastNumeroAutorizacion = string.Empty;
+            LastCodigoAfiliacion = string.Empty;
+            LastCodigoAdquiriente = string.Empty;
+            LastNroAutorizador = string.Empty;
+            LastTipoTarjeta = string.Empty;
+            LastTipoProducto = string.Empty;
+            LastTipoCuenta = string.Empty;
+            LastMedioPago = string.Empty;
+            LastMontoTransaccion = string.Empty;
+            LastMontoServicios = string.Empty;
+            LastMontoDonativo = string.Empty;
+            LastMoneda = string.Empty;
+            LastExisteCopiaVoucher = string.Empty;
         }
 
         public int PagarTarjetaDebito(string monto, string cedula)
@@ -102,15 +143,19 @@ namespace AlphaPOS.VposConnector
             return ExecuteAndSetResult(json);
         }
 
-        public int VerificarP2C(string monto, string telefono, string banco)
+        public int VerificarP2C(string monto, string cedula)
         {
-            var json = BuildJson(
-                Tuple.Create("accion", "verificacionP2C", false),
-                Tuple.Create("montoTransaccion", monto, true),
-                Tuple.Create("telefono", telefono, false),
-                Tuple.Create("banco", banco, false));
+            return VerificarMedioPago(monto, cedula, "MedioPagoP2C");
+        }
 
-            return ExecuteAndSetResult(json);
+        public int VerificarTransferencia(string monto, string cedula)
+        {
+            return VerificarMedioPago(monto, cedula, "MedioPagoTransferencia");
+        }
+
+        public int VerificarBiopago(string monto, string cedula)
+        {
+            return VerificarMedioPago(monto, cedula, "MedioPagoBiopago");
         }
 
         public int PagarConCambio(string monto, string cedula, string tipoMoneda)
@@ -126,18 +171,18 @@ namespace AlphaPOS.VposConnector
 
         public int PagarBiopago(string monto, string cedula)
         {
-            var json = BuildJson(
-                Tuple.Create("accion", "serviciosExternos", false),
-                Tuple.Create("montoTransaccion", monto, true),
-                Tuple.Create("cedula", cedula, false));
-
-            return ExecuteAndSetResult(json);
+            return VerificarBiopago(monto, cedula);
         }
 
-        public int ObtenerMediosPago()
+        public string ObtenerMediosPago()
         {
             var json = BuildJson(Tuple.Create("accion", "obtenerMediosPago", false));
-            return ExecuteAndSetResult(json);
+            var response = _service.ExecuteMetodo(json);
+            LastJsonRequest = _service.LastJsonRequest ?? (json ?? string.Empty);
+            LastJsonResponse = _service.LastJsonResponse ?? (response ?? string.Empty);
+            LastUrlRequest = _service.LastUrlRequest ?? string.Empty;
+            SetResultFromResponse(response);
+            return ExtractMediosPagoCsv(response);
         }
 
         public int ImprimirUltimoVoucherAprobado()
@@ -169,6 +214,17 @@ namespace AlphaPOS.VposConnector
             return ExecuteAndSetResult(json);
         }
 
+        private int VerificarMedioPago(string monto, string cedula, string medioPago)
+        {
+            var json = BuildJson(
+                Tuple.Create("accion", "tarjeta", false),
+                Tuple.Create("montoTransaccion", monto, true),
+                Tuple.Create("cedula", cedula, false),
+                Tuple.Create("medioPago", medioPago, false));
+
+            return ExecuteAndSetResult(json);
+        }
+
         private int ExecuteAndSetResult(string json)
         {
             var response = _service.ExecuteMetodo(json);
@@ -187,8 +243,28 @@ namespace AlphaPOS.VposConnector
             LastStatus = string.Empty;
             LastSequence = string.Empty;
             LastVoucher = string.Empty;
+            LastVoucherPath = string.Empty;
             LastOrderId = string.Empty;
             LastReference = string.Empty;
+            LastTerminal = string.Empty;
+            LastTid = string.Empty;
+            LastLote = string.Empty;
+            LastTipoTransaccion = string.Empty;
+            LastFechaTransaccion = string.Empty;
+            LastHoraTransaccion = string.Empty;
+            LastNumeroAutorizacion = string.Empty;
+            LastCodigoAfiliacion = string.Empty;
+            LastCodigoAdquiriente = string.Empty;
+            LastNroAutorizador = string.Empty;
+            LastTipoTarjeta = string.Empty;
+            LastTipoProducto = string.Empty;
+            LastTipoCuenta = string.Empty;
+            LastMedioPago = string.Empty;
+            LastMontoTransaccion = string.Empty;
+            LastMontoServicios = string.Empty;
+            LastMontoDonativo = string.Empty;
+            LastMoneda = string.Empty;
+            LastExisteCopiaVoucher = string.Empty;
 
             if (string.IsNullOrWhiteSpace(response))
             {
@@ -201,9 +277,34 @@ namespace AlphaPOS.VposConnector
             LastCode = ExtractJsonString(response, "codRespuesta");
             LastMessage = ExtractJsonString(response, "mensajeRespuesta");
             LastSequence = ExtractJsonValue(response, "numSeq");
+            if (string.IsNullOrEmpty(LastSequence))
+            {
+                LastSequence = ExtractJsonValue(response, "semJsd");
+            }
+
             LastVoucher = ExtractJsonString(response, "nombreVoucher");
+            LastVoucherPath = LastVoucher;
             LastReference = ExtractJsonString(response, "numeroReferencia");
             LastOrderId = ExtractJsonString(response, "idOrden");
+            LastTerminal = ExtractJsonString(response, "terminal");
+            LastTid = ExtractJsonString(response, "tid");
+            LastLote = ExtractJsonValue(response, "numeroLote");
+            LastTipoTransaccion = ExtractJsonValue(response, "tipoTransaccion");
+            LastFechaTransaccion = ExtractJsonString(response, "fechaTransaccion");
+            LastHoraTransaccion = ExtractJsonString(response, "horaTransaccion");
+            LastNumeroAutorizacion = ExtractJsonString(response, "numeroAutorizacion");
+            LastCodigoAfiliacion = ExtractJsonString(response, "codigoAfiliacion");
+            LastCodigoAdquiriente = ExtractJsonString(response, "codigoAdquiriente");
+            LastNroAutorizador = ExtractJsonString(response, "nroAutorizador");
+            LastTipoTarjeta = ExtractJsonString(response, "tipoTarjeta");
+            LastTipoProducto = ExtractJsonString(response, "tipoProducto");
+            LastTipoCuenta = ExtractJsonString(response, "tipoCuenta");
+            LastMedioPago = ExtractJsonValue(response, "medioPago");
+            LastMontoTransaccion = ExtractJsonValue(response, "montoTransaccion");
+            LastMontoServicios = ExtractJsonValue(response, "montoServicios");
+            LastMontoDonativo = ExtractJsonValue(response, "montoDonativo");
+            LastMoneda = ExtractJsonString(response, "descrMoneda");
+            LastExisteCopiaVoucher = ExtractJsonValue(response, "existeCopiaVoucher");
 
             if (string.IsNullOrEmpty(LastMessage))
             {
@@ -256,13 +357,46 @@ namespace AlphaPOS.VposConnector
 
         private static string ExtractJsonValue(string response, string key)
         {
-            var pattern = "\"" + Regex.Escape(key) + "\"\\s*:\\s*(\"([^\"]*)\"|[-]?[0-9]+)";
-            var match = Regex.Match(response ?? string.Empty, pattern, RegexOptions.CultureInvariant);
+            var pattern = "\"" + Regex.Escape(key) + "\"\\s*:\\s*(\"([^\"]*)\"|[-]?[0-9]+(?:\\.[0-9]+)?|true|false|null)";
+            var match = Regex.Match(response ?? string.Empty, pattern, RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
             if (!match.Success) return string.Empty;
 
             var quotedValue = match.Groups[2].Value;
             if (!string.IsNullOrEmpty(quotedValue)) return quotedValue;
-            return match.Groups[1].Value.Trim('"');
+
+            var rawValue = match.Groups[1].Value.Trim('"');
+            return string.Equals(rawValue, "null", StringComparison.OrdinalIgnoreCase) ? string.Empty : rawValue;
+        }
+
+        private static string ExtractMediosPagoCsv(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response)) return string.Empty;
+
+            var mediosPagoMatch = Regex.Match(
+                response,
+                "\"mediosPago\"\\s*:\\s*\\{(.*?)\\}",
+                RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
+            if (!mediosPagoMatch.Success) return string.Empty;
+
+            var mediosPagoContent = mediosPagoMatch.Groups[1].Value;
+            var itemMatches = Regex.Matches(
+                mediosPagoContent,
+                "\"[^\"]+\"\\s*:\\s*\"([^\"]*)\"",
+                RegexOptions.CultureInvariant);
+
+            if (itemMatches.Count == 0) return string.Empty;
+
+            var values = new List<string>();
+            foreach (Match item in itemMatches)
+            {
+                if (item.Groups.Count < 2) continue;
+                var value = item.Groups[1].Value;
+                if (string.IsNullOrWhiteSpace(value)) continue;
+                values.Add(value);
+            }
+
+            return string.Join(",", values);
         }
 
         private static string BuildJson(params Tuple<string, string, bool>[] values)
