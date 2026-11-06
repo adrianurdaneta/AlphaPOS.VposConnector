@@ -2,6 +2,29 @@
 
 All notable changes to this project.
 
+## [Unreleased] - Reorganización del repositorio
+
+El repositorio queda dedicado al conector. Cambió el layout y salió del árbol versionado todo lo
+que no es conector:
+
+### Changed
+- Los proyectos se movieron a `src/AlphaPOS.VposConnector/` y `tests/AlphaPOS.VposConnector.Tests/`.
+- La documentación del conector vive en `docs/`; los ejemplos de VFP, en `samples/`.
+- El nombre del repositorio y del directorio local pasa a `AlphaPOS.VposConnector`.
+
+### Removed from version control
+- El runtime del proveedor (`Windows/`), los manuales PDF del proveedor y las guías de integración y
+despliegue de VPOS. Siguen en disco bajo `_vendor/` (ignorada por git).
+- Archivos de borrador bajo `_scratch/` (ignorada por git).
+
+### Fixed
+- Se quitaron dos entradas que nombraban archivos inexistentes (`CONTEXTO_VPOS_Y_PROYECTO.md` y
+`PLAN_ALINEAMIENTO_VPOS.md`).
+- `.gitignore` cubre `_vendor/`, `_scratch/`, `voucher/`, `.atl/` y `logs/`.
+
+> Las entradas fechadas de abajo son un registro histórico y mencionan las rutas anteriores a esta
+> reorganización.
+
 ## [2026-08-27] - Estado documentado de la implementación actual
 
 ### Current implementation
@@ -40,8 +63,6 @@ All notable changes to this project.
   - `AlphaPOS.VposConnector_Manual_ES.md`
   - `AlphaPOS.VposConnector_Manual_Technical_ES.md`
   - `example_from_vfp.prg` (ejemplos completos de API específica + legacy)
-  - `CONTEXTO_VPOS_Y_PROYECTO.md`
-  - `PLAN_ALINEAMIENTO_VPOS.md`
 
 ### Legacy / Compatibility Notes
 - Métodos legacy que continúan disponibles por compatibilidad:
@@ -59,7 +80,7 @@ All notable changes to this project.
 1. Mantener llamadas legacy en producción estable.
 2. Introducir en paralelo métodos específicos para nuevos casos.
 3. Usar propiedades `Last*` para diagnóstico y control de flujo en VFP.
-4. Validar casos contra el script de certificación: `Script_Certificacion_GrupoIDB_Vpos3.15.10.xlsx`.
+4. Validar casos contra el script de certificación: `docs/Script_Certificacion_GrupoIDB_Vpos3.15.10.xlsx`.
 
 ## [Unreleased] - 2026-04-20
 

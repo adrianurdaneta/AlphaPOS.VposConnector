@@ -59,10 +59,10 @@ C:\Windows\Microsoft.NET\Framework\v4.0.30319\RegAsm.exe AlphaPOS.VposConnector.
 
 Ejemplo VFP
 -----------
-Ver `example_from_vfp.prg`.
+Ver `samples/example_from_vfp.prg` y `samples/example_from_vfp_updated.prg`.
 
 Pruebas
 -------
 Ejecutar con un runner x86:
 
-`dotnet test ..\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86`
+`dotnet test tests\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86`

@@ -9,6 +9,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.3" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\\AlphaPOS.VposConnector\\AlphaPOS.VposConnector.csproj" />
+    <ProjectReference Include="..\..\src\AlphaPOS.VposConnector\AlphaPOS.VposConnector.csproj" />
   </ItemGroup>
 </Project>

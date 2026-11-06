@@ -56,7 +56,7 @@ Los campos conocidos se extraen a propiedades `Last*`. La implementación actual
 La DLL está fijada a x86 para compatibilidad con VFP9. El proyecto de tests debe ejecutarse con el mismo target:
 
 ```text
-dotnet test AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86
+dotnet test tests\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86
 ```
 
 ## Compatibilidad COM

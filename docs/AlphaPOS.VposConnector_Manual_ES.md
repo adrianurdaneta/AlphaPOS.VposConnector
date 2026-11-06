@@ -111,7 +111,7 @@ Por defecto el log se escribe como `AlphaPOS.VposConnector.log` en el directorio
 El proyecto de pruebas debe ejecutarse como x86:
 
 ```text
-dotnet test ..\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86
+dotnet test tests\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86
 ```
 
 El informe técnico de la revisión está en `REVISION_2026-08-27.md`.

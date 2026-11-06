@@ -1,9 +1,12 @@
-Vpos Universal 3.15.9 Certificada
-=================================
+AlphaPOS.VposConnector
+=======================
 
 Resumen
 -------
 Repositorio con la DLL COM `AlphaPOS.VposConnector` para integrar AlphaPOS (VFP9) con VPOS REST local.
+
+Este repositorio contiene únicamente el conector: el runtime del proveedor (`Windows/`) no se
+versiona ni se publica.
 
 Estado actual del enfoque
 -------------------------
@@ -12,11 +15,15 @@ La DLL usa REST local directo:
 - Endpoint: `POST /vpos/metodo`
 - Sin INI, API key ni certificados en la implementación actual.
 
-Proyecto principal
-------------------
-- `AlphaPOS.VposConnector/` -> código fuente de la DLL
-- `AlphaPOS.VposConnector.Tests/` -> pruebas MSTest
-- `example_from_vfp.prg` -> ejemplo de uso desde VFP
+Estructura del repositorio
+--------------------------
+- `src/AlphaPOS.VposConnector/` -> código fuente de la DLL
+- `tests/AlphaPOS.VposConnector.Tests/` -> pruebas MSTest
+- `docs/` -> manuales del conector, revisión técnica y script de certificación
+- `samples/` -> ejemplos de uso desde VFP
+
+Las carpetas `_vendor/` (material del proveedor) y `_scratch/` (borradores) están ignoradas por git
+y no forman parte de la publicación.
 
 Métodos de Fase 1 expuestos por la DLL
 --------------------------------------
@@ -45,7 +52,7 @@ Todas las operaciones usan una instancia local. No se debe compartir una instanc
 
 Compilar
 --------
-msbuild AlphaPOS.VposConnector\AlphaPOS.VposConnector.csproj /p:Configuration=Release /p:PlatformTarget=x86
+msbuild src\AlphaPOS.VposConnector\AlphaPOS.VposConnector.csproj /p:Configuration=Release /p:PlatformTarget=x86
 
 Registro COM (x86)
 ------------------
@@ -55,8 +62,11 @@ Pruebas
 -------
 La DLL y el runner deben ejecutarse como x86:
 
-`dotnet test AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86`
+`dotnet test tests\AlphaPOS.VposConnector.Tests\AlphaPOS.VposConnector.Tests.csproj --no-restore -p:PlatformTarget=x86`
+
+El flag `-p:PlatformTarget=x86` no es opcional: sin él el runner arranca en 64 bits y la carga de la
+DLL falla con `BadImageFormatException`.
 
 Revisión técnica
 ----------------
-Ver `AlphaPOS.VposConnector/REVISION_2026-08-27.md`.
+Ver `docs/REVISION_2026-08-27.md`.
