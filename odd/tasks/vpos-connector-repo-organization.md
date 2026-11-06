@@ -107,3 +107,12 @@ desde el historial). Por eso T4 verifica antes de cerrar.
     se agregó una sección `[Unreleased]` con la reorganización y la aclaración de que las entradas
     de abajo mencionan el layout anterior. Sí se eliminaron dos viñetas que nombraban archivos
     inexistentes.
+  - **El xlsx de certificación se dejó fuera del índice**: nunca estuvo versionado y no se empieza a
+    versionar un binario por iniciativa propia. Queda en disco en `docs/` y `.gitignore` cubre
+    `docs/*.xlsx`. Si el propietario quiere versionarlo, se agrega con una línea.
+- **L5** (evidencia T3, cierre): el directorio local pasó de `c:\dev\Vpos Universal 3.15.9 Certificada`
+  a `c:\dev\AlphaPOS.VposConnector`. Verificado después del rename: build **0 avisos / 0 errores** y
+  suite **4/4** desde la ruta nueva. `_vendor/` (27 MB) y `Windows/` (280 MB) siguen en disco y fuera
+  del índice. Pendiente de decisión del propietario: publicar la rama `chore/repo-organization`
+  (nace de `docs/vpos-connector-revision-20260827`, no de `master`), y si `master` se reemplaza o se
+  mergea con PR.
