@@ -116,3 +116,12 @@ desde el historial). Por eso T4 verifica antes de cerrar.
   del índice. Pendiente de decisión del propietario: publicar la rama `chore/repo-organization`
   (nace de `docs/vpos-connector-revision-20260827`, no de `master`), y si `master` se reemplaza o se
   mergea con PR.
+- **L6** (defecto colateral encontrado y corregido): el rename del directorio rompió los **dos
+  worktrees enlazados** (`adrianurdaneta-legendary-invention` y `adrianurdaneta-supreme-broccoli`).
+  Su archivo `.git` guarda un puntero absoluto a
+  `C:/dev/Vpos Universal 3.15.9 Certificada/.git/worktrees/...`, que dejó de existir. `git worktree
+  list` desde la principal no lo delata, porque lee el registro de la principal y no el puntero de
+  cada worktree. Se corrigió con `git worktree repair <ruta>...` y se verificó ejecutando `git
+  branch`/`git status` dentro de cada uno: ambos vuelven a apuntar a
+  `C:/dev/AlphaPOS.VposConnector/.git/worktrees/...`. Lección: renombrar la raíz de un repositorio
+  con worktrees enlazados requiere `git worktree repair` y verificación dentro de cada worktree.
